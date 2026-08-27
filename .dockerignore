@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+.git
+.env
+.env.*
+!.env.example
+plan/
+*.md
+.DS_Store
+apps/backend/data/uploads

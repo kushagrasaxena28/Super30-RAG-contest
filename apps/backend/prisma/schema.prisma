@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  transcript
+  reference_document
+}
+
+enum SourceStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  sources Source[]
+
+  @@index([name])
+}
+
+model Source {
+  id          String       @id @default(uuid())
+  filename    String
+  contentHash String       @unique
+  // Nullable because the Source row is created as the first durable act of
+  // the ingest job - before extraction and classification - so that a file
+  // that dies mid-pipeline is still visible as `failed` in GET /api/sources
+  // and /api/health (see src/jobs/ingestJob.ts and the Source.status
+  // lifecycle in plan/00-architecture.md). Null therefore means "not
+  // classified yet"; a `ready` source always has one.
+  sourceType  SourceType?
+  status      SourceStatus @default(pending)
+  clientId    String?
+  sessionDate DateTime?
+  rawText     String?
+  error       String?
+  // Set when transcript speaker labeling looked unreliable (skewed speaker
+  // balance or a coverage shortfall vs. the raw text) - the source still
+  // ingests (see plan/02-ingestion.md), this just surfaces the caveat.
+  labelingSuspect Boolean @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id])
+  chunks Chunk[]
+
+  @@index([status])
+  @@index([clientId])
+}
+
+model Chunk {
+  id       String @id @default(uuid())
+  sourceId String
+  text     String
+
+  // ChunkMetadata shape (see src/types/domain.ts):
+  // { clientId?, sourceType, sessionDate?, categoryOrSection?,
+  //   standardCode?, isSummary, speakerSource?, turnRange? }
+  metadata Json
+
+  // Populated by the hand-written 0002_fts migration (generated tsvector
+  // column + GIN index) - Prisma cannot express GENERATED ALWAYS AS columns,
+  // so this field exists only so introspection doesn't fight the migration.
+  // All reads/writes go through raw SQL in src/db/fts.ts.
+  searchVector Unsupported("tsvector")?
+
+  createdAt DateTime @default(now())
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+}
+
+model Conversation {
+  id             String    @id @default(uuid())
+  createdAt      DateTime  @default(now())
+  summary        String?
+  summarizedUpTo DateTime?
+
+  messages Message[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  sources        Json?
+  tokenCount     Int?
+  createdAt      DateTime     @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
