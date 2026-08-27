@@ -11,9 +11,15 @@ const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT }, "api listening");
 });
 
-// Enqueued after the server starts listening, not before - the API must
-// stay responsive even while the corpus is still indexing (see plan/03).
-enqueueBootstrapDataset().catch((err) => logger.error({ err }, "bootstrap enqueue failed"));
+// Opt-in (BOOTSTRAP_DATASET=true). The app starts empty by default so files
+// are uploaded from the chat UI and indexed on demand. When enabled, this is
+// still enqueued after the server starts listening, never before - the API
+// must stay responsive while the corpus indexes (see plan/03).
+if (env.BOOTSTRAP_DATASET) {
+  enqueueBootstrapDataset().catch((err) => logger.error({ err }, "bootstrap enqueue failed"));
+} else {
+  logger.info("BOOTSTRAP_DATASET=false - starting with an empty index; upload files via POST /api/upload");
+}
 
 async function shutdown(signal: string) {
   logger.info({ signal }, "shutting down");

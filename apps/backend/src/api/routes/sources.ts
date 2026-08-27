@@ -26,6 +26,11 @@ sourcesRouter.get("/sources", async (_req, res) => {
       sessionDate: s.sessionDate?.toISOString().slice(0, 10) ?? null,
       chunkCount: s._count.chunks,
       labelingSuspect: s.labelingSuspect,
+      // Surfaced so a failed ingest is self-diagnosing in the UI and via
+      // curl - otherwise a source just shows `failed` with no reason, and
+      // the actual cause (bad API key, exhausted quota, corrupt PDF) is
+      // only findable by reading worker logs.
+      error: s.error,
       createdAt: s.createdAt.toISOString(),
     })),
   });

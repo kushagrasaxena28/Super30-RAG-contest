@@ -43,7 +43,11 @@ export const geminiProvider: EmbeddingProvider = {
   apiKeyUrl: "https://aistudio.google.com/apikey",
   getApiKey: () => env.GEMINI_API_KEY,
 
-  defaultRpm: 100,
+  // Google documents ~100 RPM free, but observed 429s during a full-corpus
+  // ingest (the free tier also carries a daily cap that the per-minute
+  // number doesn't capture). Pacing at 60 trades a little ingest speed for
+  // not failing jobs; override with EMBEDDING_RATE_LIMIT_RPM on a paid key.
+  defaultRpm: 60,
   defaultTpm: 30_000,
 
   maxBatchTexts: MAX_REQUESTS_PER_CALL,

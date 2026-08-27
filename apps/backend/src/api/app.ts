@@ -11,7 +11,7 @@ import { jobsRouter } from "./routes/jobs.js";
 import { sourcesRouter } from "./routes/sources.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { debugRouter } from "./routes/debug.js";
-import { RefusalError } from "../llm/anthropic.js";
+import { RefusalError } from "../llm/index.js";
 import { ASK_BUCKET, UPLOAD_BUCKET, perIpRateLimit } from "./rateLimit.js";
 import { ZodError } from "zod";
 

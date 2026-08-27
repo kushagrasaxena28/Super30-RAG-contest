@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
-import { structuredCall } from "../llm/anthropic.js";
+import { structuredCall } from "../llm/index.js";
 import { listClientNames } from "./clientResolver.js";
 
 export const QueryAnalysisSchema = z.object({

@@ -4,14 +4,22 @@ import { logger } from "../logger.js";
 import { consume, type BucketConfig } from "../ratelimit/tokenBucket.js";
 import { RefusalError, type StructuredCallOptions, type SystemPrompt } from "./types.js";
 
+// Google's free tier for gemini-2.5-flash is 10 requests/minute. Pacing
+// locally to that is what keeps ingestion working: set this too high and we
+// flood Google, collect 429s, burn the retry budget and fail the job - which
+// looked like "some files don't upload" but was purely self-inflicted load.
+// Override via GEMINI_RATE_LIMIT_RPM on a paid key.
 const GEMINI_BUCKET: BucketConfig = {
   name: "gemini:llm:rpm",
-  refillPerMinute: 60,
-  capacity: 60,
+  refillPerMinute: env.GEMINI_RATE_LIMIT_RPM ?? 10,
+  capacity: env.GEMINI_RATE_LIMIT_RPM ?? 10,
 };
 
 const REQUEST_TIMEOUT_MS = 120_000;
-const MAX_ATTEMPTS = 4;
+// Each attempt can sleep up to 60s on a 429, so this is ~5 minutes of
+// patience before a job is failed - deliberately generous, because on a free
+// tier a 429 means "wait", not "this will never work".
+const MAX_ATTEMPTS = 6;
 
 interface GeminiContentPart {
   text?: string;

@@ -16,13 +16,18 @@ const optionalCount = () => blankIsUnset(z.coerce.number().int().positive().opti
 const countWithDefault = (fallback: number) =>
   blankIsUnset(z.coerce.number().int().positive().default(fallback));
 
+const EnvSchema = z.object({
+  // Which LLM src/llm/ actually calls for classification, transcript
+  // speaker-labeling, query analysis and answer generation. Defaults to
+  // gemini: its free tier needs no payment method, so a reviewer can clone
+  // and run with a single key and no billing setup.
   LLM_PROVIDER: z.enum(["gemini", "anthropic"]).default("gemini"),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   ANTHROPIC_API_KEY: optionalSecret(),
 
-  // Which embedding provider src/embeddings/ actually calls. Defaults to
-  // voyage so an existing .env keeps working unchanged.
-  EMBEDDING_PROVIDER: z.enum(["voyage", "gemini", "jina"]).default("voyage"),
+  // Which embedding provider src/embeddings/ actually calls. Also defaults
+  // to gemini, so GEMINI_API_KEY alone is enough to run the whole system.
+  EMBEDDING_PROVIDER: z.enum(["voyage", "gemini", "jina"]).default("gemini"),
 
   // Provider keys are optional HERE on purpose: only the selected
   // provider's key is required. We enforce the active provider's key on boot.
@@ -38,6 +43,13 @@ const countWithDefault = (fallback: number) =>
   PORT: z.coerce.number().int().positive().default(3001),
   NODE_ENV: z.enum(["development", "production", "test"]).default("production"),
 
+  // Auto-ingest the bundled dataset on API boot. OFF by default: the app is
+  // meant to start empty so a reviewer uploads their own files from the chat
+  // UI and watches them get classified and indexed, which is the flow the
+  // brief actually asks to be tested. Set true to preload docs/ instead.
+  BOOTSTRAP_DATASET: blankIsUnset(
+    z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  ),
   INGESTION_DOCS_DIR: z.string().default("/data/docs/docs_for_test"),
   INGESTION_TRANSCRIPTS_DIR: z.string().default("/data/docs/transcriptions_for_test"),
   UPLOAD_DIR: z.string().default("/data/uploads"),
@@ -61,6 +73,10 @@ const countWithDefault = (fallback: number) =>
 
   ANTHROPIC_RATE_LIMIT_RPM: countWithDefault(50),
   ANTHROPIC_RATE_LIMIT_BURST: optionalCount(),
+
+  // Outbound Gemini LLM request rate. Unset uses Google's free-tier limit
+  // for gemini-2.5-flash (10 RPM). Raise it on a paid key.
+  GEMINI_RATE_LIMIT_RPM: optionalCount(),
 
   // Per-IP HTTP limits. /api/ask is 1 query-analysis call + 1-2 generation
   // calls, so it is the expensive endpoint; /api/upload enqueues a job that

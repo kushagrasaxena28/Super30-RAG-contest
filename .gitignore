@@ -43,3 +43,7 @@ node_modules
 # reach the repo. See plan/09-hardening.md section 5 and plan/11-delivery.md.
 .uploads-local
 uploads/
+
+# Internal design notes and agent config - not part of the deliverable
+plan/
+.claude/

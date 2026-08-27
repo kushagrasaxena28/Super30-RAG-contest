@@ -10,7 +10,7 @@ import { routeAndChunk } from "../ingestion/router.js";
 import { summarizeSource, refreshClientRollingSummary } from "../ingestion/summaries.js";
 import { writeChunks, deleteChunksForSource } from "../storage/writeChunks.js";
 import { resolveOrCreateClient } from "../retrieval/clientResolver.js";
-import { RefusalError } from "../llm/anthropic.js";
+import { RefusalError } from "../llm/index.js";
 import type { IngestJobData, IngestJobResult } from "./types.js";
 import type { ChunkMetadata } from "../types/domain.js";
 

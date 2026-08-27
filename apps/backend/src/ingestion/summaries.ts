@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { structuredCall } from "../llm/anthropic.js";
+import { structuredCall } from "../llm/index.js";
 import { prisma } from "../db/prisma.js";
 import { sha256 } from "./hash.js";
 import { writeChunks, deleteChunksForSource } from "../storage/writeChunks.js";

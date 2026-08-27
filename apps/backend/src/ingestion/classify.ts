@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { structuredCall } from "../llm/anthropic.js";
+import { structuredCall } from "../llm/index.js";
 import type { SourceTypeValue } from "../types/domain.js";
 
 const ClassificationSchema = z.object({

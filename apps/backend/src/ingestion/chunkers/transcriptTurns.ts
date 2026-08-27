@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { structuredCall } from "../../llm/anthropic.js";
+import { structuredCall } from "../../llm/index.js";
 import { wordCount } from "../textUtils.js";
 import { TRANSCRIPT_TURN_WINDOW, TRANSCRIPT_TURN_OVERLAP } from "../../config/constants.js";
 import type { ChunkerContext, PendingChunk } from "../types.js";

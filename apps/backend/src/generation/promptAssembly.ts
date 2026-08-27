@@ -1,4 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type { LlmMessage, LlmTextBlock } from "../llm/types.js";
 import { prisma } from "../db/prisma.js";
 import { WHOLE_DOC_WORD_THRESHOLD } from "../config/constants.js";
 import { wordCount } from "../ingestion/textUtils.js";
@@ -73,20 +73,27 @@ async function getPinnedReferenceDocs(): Promise<Array<{ filename: string; text:
 }
 
 export interface AssembledPrompt {
-  system: Anthropic.TextBlockParam[];
-  messages: Anthropic.MessageParam[];
+  system: LlmTextBlock[];
+  messages: LlmMessage[];
 }
 
 /**
- * Prompt caching is a prefix match - order by volatility (see
- * plan/06-generation.md): stable instructions -> pinned reference docs
- * (cache breakpoint) -> conversation history (cache breakpoint) ->
- * candidates + question (volatile, last, never cached).
+ * Ordered by volatility (see plan/06-generation.md): stable instructions ->
+ * pinned reference docs -> conversation history -> candidates + question
+ * (volatile, last).
+ *
+ * That ordering was originally chosen for Anthropic prompt caching, which is
+ * a prefix match. It is kept because it is still the right shape, but the
+ * explicit cache_control breakpoints are gone: those are Anthropic-specific
+ * and this prompt is now built provider-neutrally (LLM_PROVIDER selects
+ * gemini or anthropic at runtime). Re-introducing them means pushing the
+ * breakpoint decision down into the Anthropic adapter, which knows it is
+ * talking to a cache-aware API.
  */
 export async function assemblePrompt(params: {
   question: string;
   candidates: Candidate[];
-  history: Anthropic.MessageParam[];
+  history: LlmMessage[];
 }): Promise<AssembledPrompt> {
   const pinnedDocs = await getPinnedReferenceDocs();
   const pinnedBlock =
@@ -96,12 +103,10 @@ export async function assemblePrompt(params: {
           .join("\n\n")
       : "(no pinned reference documents ingested yet)";
 
-  const system: Anthropic.TextBlockParam[] = [
+  const system: LlmTextBlock[] = [
     { type: "text", text: GROUNDING_INSTRUCTIONS },
-    { type: "text", text: pinnedBlock, cache_control: { type: "ephemeral" } },
+    { type: "text", text: pinnedBlock },
   ];
-
-  const history = markLastBlockCached(params.history);
 
   const candidateBlock = params.candidates
     .map(
@@ -110,34 +115,12 @@ export async function assemblePrompt(params: {
     )
     .join("\n\n");
 
-  const finalMessage: Anthropic.MessageParam = {
+  const finalMessage: LlmMessage = {
     role: "user",
-    content: [
-      {
-        type: "text",
-        text: `<retrieved_evidence>\n${candidateBlock || "(no evidence retrieved)"}\n</retrieved_evidence>\n\n<question>\n${params.question}\n</question>`,
-      },
-    ],
+    content: `<retrieved_evidence>\n${candidateBlock || "(no evidence retrieved)"}\n</retrieved_evidence>\n\n<question>\n${params.question}\n</question>`,
   };
 
-  return { system, messages: [...history, finalMessage] };
-}
-
-function markLastBlockCached(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
-  if (messages.length === 0) return messages;
-  const copy = messages.map((m) => ({ ...m }));
-  const last = copy[copy.length - 1]!;
-  if (typeof last.content === "string") {
-    last.content = [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }];
-  } else {
-    const blocks = [...last.content];
-    const lastBlock = blocks[blocks.length - 1];
-    if (lastBlock && lastBlock.type === "text") {
-      blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
-    }
-    last.content = blocks;
-  }
-  return copy;
+  return { system, messages: [...params.history, finalMessage] };
 }
 
 function escapeAttr(s: string): string {
