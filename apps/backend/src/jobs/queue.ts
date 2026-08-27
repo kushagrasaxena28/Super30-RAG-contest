@@ -12,10 +12,20 @@ export const ingestQueueEvents = new QueueEvents(INGEST_QUEUE_NAME, { connection
 
 export async function enqueueIngestJob(data: IngestJobData): Promise<{ jobId: string; deduplicated: boolean }> {
   // jobId = contentHash -> duplicate uploads are rejected by BullMQ
-  // automatically (see plan/03).
+  // automatically. But `removeOnFail: false` means a job that exhausted its
+  // retries stays in Redis forever under this same id - checking only
+  // existence (not state) meant a permanently-failed job silently blocked
+  // every future re-upload of that file, forever, reported as
+  // `deduplicated: true` (a success-shaped response for a dead job). Only
+  // dedupe against a job that's actually live or actually succeeded; a
+  // failed one gets removed so a fresh attempt can take its place.
   const existingJob = await ingestQueue.getJob(data.contentHash);
   if (existingJob) {
-    return { jobId: data.contentHash, deduplicated: true };
+    const state = await existingJob.getState();
+    if (state !== "failed" && state !== "unknown") {
+      return { jobId: data.contentHash, deduplicated: true };
+    }
+    await existingJob.remove();
   }
 
   await ingestQueue.add("ingest", data, {

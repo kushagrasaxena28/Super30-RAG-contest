@@ -2,7 +2,7 @@ import { z, type ZodType } from "zod";
 import { env } from "../config/env.js";
 import { logger } from "../logger.js";
 import { consume, type BucketConfig } from "../ratelimit/tokenBucket.js";
-import { RefusalError, type StructuredCallOptions, type SystemPrompt } from "./types.js";
+import { RefusalError, QuotaExhaustedError, type StructuredCallOptions, type SystemPrompt } from "./types.js";
 
 // Google's free tier for gemini-2.5-flash is 10 requests/minute. Pacing
 // locally to that is what keeps ingestion working: set this too high and we
@@ -162,11 +162,24 @@ export async function geminiStructuredCall<Schema extends ZodType>(
 
       if (!res.ok) {
         const bodyText = await res.text().catch(() => "");
+
+        // "free_tier_requests" quota errors are a daily cap, not a per-minute
+        // one - the "retry in Ns" it reports is misleadingly short (Google's
+        // own generic backoff hint) and does not actually clear on that
+        // schedule. Retrying wastes minutes on a call that cannot succeed
+        // until the cap resets; fail immediately and say so instead.
+        if (res.status === 429 && /free_tier_requests/i.test(bodyText)) {
+          logger.error({ label: opts.label }, "gemini free-tier daily quota exhausted");
+          throw new QuotaExhaustedError(
+            "Gemini free-tier quota is exhausted for today. Wait for it to reset, use a different GEMINI_API_KEY, enable billing, or set LLM_PROVIDER=anthropic in .env.",
+          );
+        }
+
         if (res.status === 429 || res.status >= 500) {
           const match = bodyText.match(/retry in ([\d\.]+)s/i);
           const delayMs = match ? Math.ceil(Number(match[1]) * 1000) + 1000 : 2000 * Math.pow(2, attempt - 1);
           logger.warn({ label: opts.label, status: res.status, attempt, delayMs }, "gemini rate limited or 5xx, retrying");
-          await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 60_000)));
+          await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 20_000)));
           continue;
         }
         throw new Error(`Gemini request failed (${res.status}): ${bodyText.slice(0, 500)}`);
@@ -216,7 +229,7 @@ export async function geminiStructuredCall<Schema extends ZodType>(
 
       return validated;
     } catch (err) {
-      if (err instanceof RefusalError) throw err;
+      if (err instanceof RefusalError || err instanceof QuotaExhaustedError) throw err;
       lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < MAX_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));

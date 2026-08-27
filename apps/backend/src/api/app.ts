@@ -11,7 +11,7 @@ import { jobsRouter } from "./routes/jobs.js";
 import { sourcesRouter } from "./routes/sources.js";
 import { conversationsRouter } from "./routes/conversations.js";
 import { debugRouter } from "./routes/debug.js";
-import { RefusalError } from "../llm/index.js";
+import { RefusalError, QuotaExhaustedError } from "../llm/index.js";
 import { ASK_BUCKET, UPLOAD_BUCKET, perIpRateLimit } from "./rateLimit.js";
 import { ZodError } from "zod";
 
@@ -80,6 +80,16 @@ export function createApp() {
           message: "The model declined to process this request and no fallback was available. Try rephrasing the question.",
           details: { category: err.category },
         },
+      });
+    }
+
+    // A bare 500 here would be indistinguishable from a real bug and would
+    // arrive after minutes of silent "Thinking..." if the underlying call
+    // had retried a hopeless quota exhaustion instead of failing fast (see
+    // llm/gemini.ts) - give the client something it can act on.
+    if (err instanceof QuotaExhaustedError) {
+      return res.status(503).json({
+        error: { code: "provider_quota_exhausted", message: err.message },
       });
     }
 
